@@ -1,15 +1,16 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import (precision_score, recall_score, f1_score,
-                             confusion_matrix, roc_auc_score, average_precision_score)
+from sklearn.metrics import (
+    precision_score, recall_score, f1_score,
+    confusion_matrix, roc_auc_score, average_precision_score
+)
 from xgboost import XGBClassifier
 import xgboost as xgb
 
-# estan al reves 
-
-CSV_BASE = "C:\\Users\\rpzda\\Documents\\python varios\\ML_GDL\\IA-avanzada-para-la-ciencia-de-datos\\train_balanced_base_months_0_5\\train_balanced_combined_months_0_5.csv"
-CSV_COMB = "C:\\Users\\rpzda\\Documents\\python varios\\ML_GDL\\IA-avanzada-para-la-ciencia-de-datos\\train_balanced_base_months_0_5\\train_balanced_base_months_0_5.csv"
+# ====== RUTAS (COMBINED para train/valid; BASE para test) ======
+CSV_COMB = r"C:\Users\rpzda\Documents\python varios\ML_GDL\IA-avanzada-para-la-ciencia-de-datos\train_balanced_base_months_0_5\train_balanced_combined_months_0_5.csv"
+CSV_BASE = r"C:\Users\rpzda\Documents\python varios\ML_GDL\IA-avanzada-para-la-ciencia-de-datos\train_balanced_base_months_0_5\train_balanced_base_months_0_5.csv"
 TARGET_COL = "fraud_bool"
 RSEED = 42
 
@@ -42,26 +43,28 @@ def print_metrics(y_true, y_pred, y_proba, title=""):
     print(f"ROC-AUC:      {roc_auc_score(y_true, y_proba):.4f}")
     print(f"PR-AUC:       {average_precision_score(y_true, y_proba):.4f}")
 
-# Carga y alineación de columnas
-base = pd.read_csv(CSV_BASE)
-comb = pd.read_csv(CSV_COMB)
-assert TARGET_COL in base.columns and TARGET_COL in comb.columns
+# ====== Carga ======
+comb = pd.read_csv(CSV_COMB)   # <-- COMBINED para train/valid
+base = pd.read_csv(CSV_BASE)   # <-- BASE como test final
 
-feat_base = [c for c in base.columns if c != TARGET_COL]
+assert TARGET_COL in comb.columns and TARGET_COL in base.columns
+
+# ====== Alineación de columnas ======
 feat_comb = [c for c in comb.columns if c != TARGET_COL]
-common_feats = sorted(set(feat_base).intersection(feat_comb))
+feat_base = [c for c in base.columns if c != TARGET_COL]
+common_feats = sorted(set(feat_comb).intersection(feat_base))
 if not common_feats:
-    raise ValueError("No hay features en común entre BASE y COMBINED.")
+    raise ValueError("No hay features en común entre COMBINED y BASE.")
 
-Xb, yb = base[common_feats], base[TARGET_COL]
 Xc, yc = comb[common_feats], comb[TARGET_COL]
+Xb_test, yb_test = base[common_feats], base[TARGET_COL]  # test = TODO el BASE
 
-# Holdout interno del BASE para un test del mismo dominio
-Xb_train, Xb_test, yb_train, yb_test = train_test_split(
-    Xb, yb, test_size=0.2, random_state=RSEED, stratify=yb
+# ====== Split 80/20 en COMBINED (train/valid) ======
+Xc_train, Xc_valid, yc_train, yc_valid = train_test_split(
+    Xc, yc, test_size=0.20, random_state=RSEED, stratify=yc
 )
 
-# Modelo con validación en COMBINED
+# ====== Modelo (validación con el 20% de COMBINED) ======
 model = XGBClassifier(
     n_estimators=2000,
     learning_rate=0.05,
@@ -75,17 +78,18 @@ model = XGBClassifier(
 callbacks = [xgb.callback.EarlyStopping(rounds=50, save_best=True, metric_name="logloss")]
 
 model.fit(
-    Xb_train, yb_train,
-    eval_set=[(Xc, yc)],       # validación externa (otro dominio)
+    Xc_train, yc_train,
+    eval_set=[(Xc_valid, yc_valid)],  # VALIDACIÓN = 20% de COMBINED
+    #callbacks=callbacks,
     verbose=False
 )
 
-# Reporte en VALID (BASE)
-yc_pred = model.predict(Xc)
-yc_prob = model.predict_proba(Xc)[:, 1]
-print_metrics(yc, yc_pred, yc_prob, title="VALIDACIÓN EXTERNA (BASE)")
+# ====== Reporte en VALID (20% COMBINED) ======
+yc_pred = model.predict(Xc_valid)
+yc_prob = model.predict_proba(Xc_valid)[:, 1]
+print_metrics(yc_valid, yc_pred, yc_prob, title="VALIDACIÓN (20% COMBINED)")
 
-# Reporte en TEST interno (COMBINED)
+# ====== Reporte en TEST (100% BASE) ======
 yb_pred = model.predict(Xb_test)
 yb_prob = model.predict_proba(Xb_test)[:, 1]
-print_metrics(yb_test, yb_pred, yb_prob, title="TEST INTERNO (COMBINED)")
+print_metrics(yb_test, yb_pred, yb_prob, title="TEST (BASE)")
