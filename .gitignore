@@ -1,2 +1,5 @@
+.vscode
 *.csv
 /.venv
+wandb
+__pycache__
