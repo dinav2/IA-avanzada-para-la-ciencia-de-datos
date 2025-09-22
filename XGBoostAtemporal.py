@@ -8,7 +8,7 @@ from sklearn.metrics import (
 from xgboost import XGBClassifier
 import xgboost as xgb
 
-# ====== RUTAS (COMBINED para train/valid; BASE para test) ======
+# ====== RUTAS DATASET ======
 CSV_COMB = r"C:\Users\rpzda\Documents\python varios\ML_GDL\IA-avanzada-para-la-ciencia-de-datos\train_balanced_base_months_0_5\train_balanced_combined_months_0_5.csv"
 CSV_BASE = r"C:\Users\rpzda\Documents\python varios\ML_GDL\IA-avanzada-para-la-ciencia-de-datos\train_balanced_base_months_0_5\train_balanced_base_months_0_5.csv"
 TARGET_COL = "fraud_bool"
@@ -59,12 +59,12 @@ if not common_feats:
 Xc, yc = comb[common_feats], comb[TARGET_COL]
 Xb_test, yb_test = base[common_feats], base[TARGET_COL]  # test = TODO el BASE
 
-# ====== Split 80/20 en COMBINED (train/valid) ======
+# ====== Split 80/20 en DATASET COMBINED (train/valid) ======
 Xc_train, Xc_valid, yc_train, yc_valid = train_test_split(
     Xc, yc, test_size=0.20, random_state=RSEED, stratify=yc
 )
 
-# ====== Modelo (validación con el 20% de COMBINED) ======
+# ====== Modelo XGB ======
 model = XGBClassifier(
     n_estimators=2000,
     learning_rate=0.05,
@@ -75,27 +75,23 @@ model = XGBClassifier(
     random_state=RSEED,
 )
 
-# Si quieres usar ES, descomenta:
-# callbacks = [xgb.callback.EarlyStopping(rounds=50, save_best=True, metric_name="logloss")]
-
 model.fit(
     Xc_train, yc_train,
-    eval_set=[(Xc_valid, yc_valid)],  # VALIDACIÓN = 20% de COMBINED
-    #callbacks=callbacks,
+    eval_set=[(Xc_valid, yc_valid)],  # VALIDACIÓN 20% de COMBINED
     verbose=False
 )
 
-# ====== Reporte en TRAIN (80% COMBINED) ======
+# ====== Reporte en TRAIN (80% DATASET COMBINED) ======
 yc_train_pred = model.predict(Xc_train)
 yc_train_prob = model.predict_proba(Xc_train)[:, 1]
 print_metrics(yc_train, yc_train_pred, yc_train_prob, title="TRAIN (80% COMBINED)")
 
-# ====== Reporte en VALID (20% COMBINED) ======
+# ====== Reporte en VALID (20% DATASET COMBINED) ======
 yc_valid_pred = model.predict(Xc_valid)
 yc_valid_prob = model.predict_proba(Xc_valid)[:, 1]
 print_metrics(yc_valid, yc_valid_pred, yc_valid_prob, title="VALIDACIÓN (20% COMBINED)")
 
-# ====== Reporte en TEST (100% BASE) ======
+# ====== Reporte en TEST (100% DATASET BASE) ======
 yb_pred = model.predict(Xb_test)
 yb_prob = model.predict_proba(Xb_test)[:, 1]
 print_metrics(yb_test, yb_pred, yb_prob, title="TEST (BASE)")
