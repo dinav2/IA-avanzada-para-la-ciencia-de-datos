@@ -75,7 +75,8 @@ model = XGBClassifier(
     random_state=RSEED,
 )
 
-callbacks = [xgb.callback.EarlyStopping(rounds=50, save_best=True, metric_name="logloss")]
+# Si quieres usar ES, descomenta:
+# callbacks = [xgb.callback.EarlyStopping(rounds=50, save_best=True, metric_name="logloss")]
 
 model.fit(
     Xc_train, yc_train,
@@ -84,10 +85,15 @@ model.fit(
     verbose=False
 )
 
+# ====== Reporte en TRAIN (80% COMBINED) ======
+yc_train_pred = model.predict(Xc_train)
+yc_train_prob = model.predict_proba(Xc_train)[:, 1]
+print_metrics(yc_train, yc_train_pred, yc_train_prob, title="TRAIN (80% COMBINED)")
+
 # ====== Reporte en VALID (20% COMBINED) ======
-yc_pred = model.predict(Xc_valid)
-yc_prob = model.predict_proba(Xc_valid)[:, 1]
-print_metrics(yc_valid, yc_pred, yc_prob, title="VALIDACIÓN (20% COMBINED)")
+yc_valid_pred = model.predict(Xc_valid)
+yc_valid_prob = model.predict_proba(Xc_valid)[:, 1]
+print_metrics(yc_valid, yc_valid_pred, yc_valid_prob, title="VALIDACIÓN (20% COMBINED)")
 
 # ====== Reporte en TEST (100% BASE) ======
 yb_pred = model.predict(Xb_test)
