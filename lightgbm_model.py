@@ -55,7 +55,7 @@ if __name__ == "__main__":
         "TEST_FILE": "test_temporal.csv",
         "TARGET_COL": "fraud_bool",
         "PROJECT": "fraud-detection",
-        "RUN_NAME": "lgb_model_base_refactored",
+        "RUN_NAME": "lgb_model",
         "TAGS": ["lightgbm", "temporal-split", "validation-tuning", "fraud-optimization"],
         "MAX_FPR": 0.1,
         "RSEED": 42
