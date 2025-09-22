@@ -26,10 +26,10 @@ Se entrenaron y compararon los siguientes modelos:
 
 | Modelo       | Temporalidad       | Balanceo aplicado correctamente |
 |---------------|---------------------|-------------------------------|
-| **XGBoost Atemporal** | Sin separación temporal | **NO**: se aplicó SMOTE-Tomek sobre todo el dataset → contaminación de datos |
-| **XGBoost Temporal**  | Meses 0-5 para entrenamiento, resto para test | Sí, balanceo solo al training |
-| **LightGBM Temporal**  | Meses 0-5 para entrenamiento, resto para test | Sí, correcto |
-| **CatBoost Temporal**  | Meses 0-5 para entrenamiento, resto para test | Sí, correcto |
+| **XGBoost Atemporal** "XGBoostAtemporal.py" | Sin separación temporal | **NO**: se aplicó SMOTE-Tomek sobre todo el dataset → contaminación de datos |
+| **XGBoost Temporal** "xgboost_model.py" | Meses 0-5 para entrenamiento, resto para test | Sí, balanceo solo al training |
+| **LightGBM Temporal** "lightgbm_model.py" | Meses 0-5 para entrenamiento, resto para test | Sí, correcto |
+| **CatBoost Temporal** "catboost_modelo.py" | Meses 0-5 para entrenamiento, resto para test | Sí, correcto |
 
 ## Cómo reproducir los resultados
 
