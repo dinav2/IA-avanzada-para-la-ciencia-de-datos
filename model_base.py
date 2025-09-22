@@ -3,7 +3,7 @@ import json
 import numpy as np
 import pandas as pd
 from sklearn.metrics import (
-    precision_score, recall_score, f1_score,
+    precision_score, recall_score, f1_score, accuracy_score,
     confusion_matrix, roc_auc_score, average_precision_score,
     roc_curve, precision_recall_curve
 )
@@ -36,6 +36,8 @@ class ModelBase:
         """Calculate metrics"""
         try:
             out = {}
+            # Overall accuracy
+            out["accuracy"]     = accuracy_score(y_true, y_pred)
             out["f1_macro"]     = f1_score(y_true, y_pred, average="macro")
             out["f1_weighted"]  = f1_score(y_true, y_pred, average="weighted")
             out["roc_auc"]      = roc_auc_score(y_true, y_proba)
@@ -63,7 +65,7 @@ class ModelBase:
         except Exception as e:
             print(f"Error calculating metrics: {e}")
             return {
-                "f1_macro": 0, "f1_weighted": 0, "roc_auc": 0, "pr_auc": 0,
+                "accuracy": 0, "f1_macro": 0, "f1_weighted": 0, "roc_auc": 0, "pr_auc": 0,
                 "pos_precision": 0, "pos_recall": 0, "pos_f1": 0,
                 "neg_precision": 0, "neg_recall": 0, "neg_f1": 0,
                 "tn": 0, "fp": 0, "fn": 0, "tp": 0,
@@ -265,8 +267,8 @@ class ModelBase:
             print(f"Error training final model: {e}")
             raise
 
-    def evaluate_model(self, X_test, y_test, max_fpr=0.1):
-        """Evaluate the model on the test set"""
+    def evaluate_model(self, X_train, y_train, X_val, y_val, X_test, y_test, max_fpr=0.1):
+        """Evaluate the model on train, validation and test sets"""
         try:
             if self.best_model is None:
                 raise RuntimeError("No trained model found. Run train_final_model first.")
@@ -274,27 +276,44 @@ class ModelBase:
             if max_fpr <= 0 or max_fpr > 1:
                 raise ValueError("max_fpr must be between 0 and 1")
             
-            # Generate predictions
+            # Generate predictions for all sets
+            train_proba = self.best_model.predict_proba(X_train)[:, 1]
+            val_proba = self.best_model.predict_proba(X_val)[:, 1]
             test_proba = self.best_model.predict_proba(X_test)[:, 1]
             
-            # Find optimal threshold on test set
-            test_threshold = self.find_optimal_threshold(y_test, test_proba, max_fpr)
+            # Find optimal threshold on validation set (not test!)
+            val_threshold = self.find_optimal_threshold(y_val, val_proba, max_fpr)
             
-            # Evaluate with optimal threshold
-            test_pred = (test_proba >= test_threshold).astype(int)
-            metrics, cm = self.metrics_dict(y_test, test_pred, test_proba)
+            # Evaluate all sets with the same threshold
+            train_pred = (train_proba >= val_threshold).astype(int)
+            val_pred = (val_proba >= val_threshold).astype(int)
+            test_pred = (test_proba >= val_threshold).astype(int)
             
-            print(f"Test evaluation completed")
-            print(f"   Threshold: {test_threshold:.4f}")
-            print(f"   F1: {metrics['pos_f1']:.4f}, Precision: {metrics['pos_precision']:.4f}")
-            print(f"   Recall: {metrics['pos_recall']:.4f}, FPR: {metrics['fpr']:.4f}")
+            # Calculate metrics for all sets
+            train_metrics, train_cm = self.metrics_dict(y_train, train_pred, train_proba)
+            val_metrics, val_cm = self.metrics_dict(y_val, val_pred, val_proba)
+            test_metrics, test_cm = self.metrics_dict(y_test, test_pred, test_proba)
+            
+            print(f"Model evaluation completed")
+            print(f"   Threshold: {val_threshold:.4f}")
+            print(f"   Train  - Accuracy: {train_metrics['accuracy']:.4f}, F1: {train_metrics['pos_f1']:.4f}")
+            print(f"   Val    - Accuracy: {val_metrics['accuracy']:.4f}, F1: {val_metrics['pos_f1']:.4f}")
+            print(f"   Test   - Accuracy: {test_metrics['accuracy']:.4f}, F1: {test_metrics['pos_f1']:.4f}")
             
             return {
+                'train_proba': train_proba,
+                'train_pred': train_pred,
+                'val_proba': val_proba,
+                'val_pred': val_pred,
                 'test_proba': test_proba,
                 'test_pred': test_pred,
-                'test_threshold': test_threshold,
-                'metrics': metrics,
-                'confusion_matrix': cm
+                'threshold': val_threshold,
+                'train_metrics': train_metrics,
+                'val_metrics': val_metrics,
+                'test_metrics': test_metrics,
+                'train_confusion_matrix': train_cm,
+                'val_confusion_matrix': val_cm,
+                'test_confusion_matrix': test_cm
             }
             
         except Exception as e:
@@ -341,12 +360,25 @@ class ModelBase:
         wandb.log({"tables/hyperparameter_tuning": wandb.Table(dataframe=pd.DataFrame(tuning_results))})
         
         # Evaluate model
-        results = self.evaluate_model(X_test, y_test, config["MAX_FPR"])
+        results = self.evaluate_model(X_train, y_train, X_val, y_val, X_test, y_test, config["MAX_FPR"])
         
         # Log results to WandB
-        wandb.log({f"test_optimal/{k}": v for k, v in results['metrics'].items() if isinstance(v, (int, float))})
+        wandb.log({
+            f"train_optimal/{k}": v for k, v in results['train_metrics'].items() if isinstance(v, (int, float))
+        })
+        wandb.log({
+            f"val_optimal/{k}": v for k, v in results['val_metrics'].items() if isinstance(v, (int, float))
+        })
+        wandb.log({
+            f"test_optimal/{k}": v for k, v in results['test_metrics'].items() if isinstance(v, (int, float))
+        })
+        
+        # Log curves and confusion matrices
         self.log_curves_to_wandb(y_test, results['test_proba'])
         self.log_confusion_matrix(y_test, results['test_pred'])
+        
+        # Generate and display results table
+        results_table = self.generate_results_table(results)
         
         # Save artifacts
         model_path = f"{self.model_name.lower()}_model.{self.get_model_extension()}"
@@ -454,3 +486,40 @@ class ModelBase:
     def get_model_extension(self):
         """Abstract method to get model file extension"""
         raise NotImplementedError("Subclasses must implement get_model_extension")
+    
+    def generate_results_table(self, results):
+        """Generate a results table for the model"""
+        try:
+            table_data = []
+            
+            # Add rows for each partition
+            partitions = [
+                ('Entrenamiento', results['train_metrics']),
+                ('Validación', results['val_metrics']),
+                ('Test', results['test_metrics'])
+            ]
+            
+            for partition_name, metrics in partitions:
+                row = {
+                    'Partición': partition_name,
+                    'Accuracy': f"{metrics['accuracy']:.4f}",
+                    'Precisión': f"{metrics['pos_precision']:.4f}",
+                    'Recall': f"{metrics['pos_recall']:.4f}",
+                    'F1': f"{metrics['pos_f1']:.4f}",
+                    'ROC-AUC': f"{metrics['roc_auc']:.4f}",
+                    'PR-AUC': f"{metrics['pr_auc']:.4f}",
+                    'FPR': f"{metrics['fpr']:.4f}"
+                }
+                table_data.append(row)
+            
+            # Create DataFrame
+            df_results = pd.DataFrame(table_data)
+            
+            print(f"\n=== RESULTADOS {self.model_name.upper()} ===")
+            print(df_results.to_string(index=False))
+            
+            return df_results
+            
+        except Exception as e:
+            print(f"Error generating results table: {e}")
+            return None
