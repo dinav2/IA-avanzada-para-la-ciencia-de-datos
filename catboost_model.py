@@ -17,10 +17,9 @@ class CatBoostModel(ModelBase):
                 'eval_metric': 'Logloss',
                 'bootstrap_type': 'Bernoulli',
                 'random_seed': 42,
-                'verbose': False,
+                'logging_level': 'Silent',
                 'early_stopping_rounds': 50,
-                'train_dir': None,
-                'logging_level': 'Silent'
+                'train_dir': None
             }
         )
     
