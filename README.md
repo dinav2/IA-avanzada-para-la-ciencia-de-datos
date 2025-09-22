@@ -43,8 +43,7 @@ Se entrenaron y compararon los siguientes modelos:
    
   ```bash
   python -m venv venv
-  source venv/bin/activate   # en Linux/macOS
-  # o venv\Scripts\activate  # en Windows
+  venv\Scripts\activate  # en Windows
 
    ```
 3. Instalar dependencias
