@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
     precision_score, recall_score, f1_score,
     confusion_matrix, roc_auc_score, average_precision_score
@@ -7,27 +8,19 @@ from sklearn.metrics import (
 from xgboost import XGBClassifier
 import xgboost as xgb
 
-# ======== RUTAS (ACTUALIZADAS) ========
-# Cambia SOLO la carpeta base si es necesario
-TRAIN_CSV = r"C:\Users\rpzda\Documents\python varios\ML_GDL\train_random_03.csv"        # ENTRENAMIENTO
-VALID_CSV = r"C:\Users\rpzda\Documents\python varios\ML_GDL\validation_random_03.csv"  # VALIDACIÓN
-TEST_CSV  = r"C:\Users\rpzda\Documents\python varios\ML_GDL\test_random_03.csv"        # TEST (con etiqueta)
-
+# ====== RUTAS (COMBINED para train/valid; BASE para test) ======
+CSV_COMB = r"C:\Users\rpzda\Documents\python varios\ML_GDL\IA-avanzada-para-la-ciencia-de-datos\train_balanced_base_months_0_5\train_balanced_combined_months_0_5.csv"
+CSV_BASE = r"C:\Users\rpzda\Documents\python varios\ML_GDL\IA-avanzada-para-la-ciencia-de-datos\train_balanced_base_months_0_5\train_balanced_base_months_0_5.csv"
 TARGET_COL = "fraud_bool"
 RSEED = 42
 
-# ======== UMBRAL MANUAL ========
-CHOSEN_THR = 0.20   # <<<<< CAMBIA AQUÍ EL UMBRAL
-
 def print_metrics(y_true, y_pred, y_proba, title=""):
-    if title:
-        print(f"\n===== {title} =====")
+    if title: print(f"\n===== {title} =====")
     for c in [0, 1]:
-        p = precision_score(y_true, y_pred, pos_label=c, zero_division=0)
-        r = recall_score(y_true, y_pred, pos_label=c, zero_division=0)
-        f = f1_score(y_true, y_pred, pos_label=c, zero_division=0)
-        nombre = "No Fraude (0)" if c == 0 else "Fraude (1)"
-        print(f"\nClase: {nombre}")
+        p = precision_score(y_true, y_pred, pos_label=c)
+        r = recall_score(y_true, y_pred, pos_label=c)
+        f = f1_score(y_true, y_pred, pos_label=c)
+        print(f"\nClase: {'No Fraude (0)' if c==0 else 'Fraude (1)'}")
         print("  Precision:", round(p, 4))
         print("  Recall:   ", round(r, 4))
         print("  F1 Score: ", round(f, 4))
@@ -50,37 +43,32 @@ def print_metrics(y_true, y_pred, y_proba, title=""):
     print(f"ROC-AUC:      {roc_auc_score(y_true, y_proba):.4f}")
     print(f"PR-AUC:       {average_precision_score(y_true, y_proba):.4f}")
 
-# ======== 1) CARGA ========
-df_train = pd.read_csv(TRAIN_CSV)
-df_valid = pd.read_csv(VALID_CSV)
-df_test  = pd.read_csv(TEST_CSV)
+# ====== Carga ======
+comb = pd.read_csv(CSV_COMB)   # <-- COMBINED para train/valid
+base = pd.read_csv(CSV_BASE)   # <-- BASE como test final
 
-# Validaciones
-assert TARGET_COL in df_train.columns, f"{TARGET_COL} no está en TRAIN_CSV"
-assert TARGET_COL in df_valid.columns, f"{TARGET_COL} no está en VALID_CSV"
-assert TARGET_COL in df_test.columns,  f"{TARGET_COL} no está en TEST_CSV"
+assert TARGET_COL in comb.columns and TARGET_COL in base.columns
 
-# ======== 2) ALINEAR FEATURES ========
-feat_train = [c for c in df_train.columns if c != TARGET_COL]
-feat_valid = [c for c in df_valid.columns if c != TARGET_COL]
-feat_test  = [c for c in df_test.columns  if c != TARGET_COL]
-
-common_feats = sorted(set(feat_train).intersection(set(feat_valid)).intersection(set(feat_test)))
+# ====== Alineación de columnas ======
+feat_comb = [c for c in comb.columns if c != TARGET_COL]
+feat_base = [c for c in base.columns if c != TARGET_COL]
+common_feats = sorted(set(feat_comb).intersection(feat_base))
 if not common_feats:
-    raise ValueError("No hay features en común entre TRAIN, VALID y TEST.")
+    raise ValueError("No hay features en común entre COMBINED y BASE.")
 
-X_train = df_train[common_feats]
-y_train = df_train[TARGET_COL]
-X_val   = df_valid[common_feats]
-y_val   = df_valid[TARGET_COL]
-X_test  = df_test[common_feats]
-y_test  = df_test[TARGET_COL]
+Xc, yc = comb[common_feats], comb[TARGET_COL]
+Xb_test, yb_test = base[common_feats], base[TARGET_COL]  # test = TODO el BASE
 
-# ======== 3) MODELO ========
+# ====== Split 80/20 en COMBINED (train/valid) ======
+Xc_train, Xc_valid, yc_train, yc_valid = train_test_split(
+    Xc, yc, test_size=0.20, random_state=RSEED, stratify=yc
+)
+
+# ====== Modelo (validación con el 20% de COMBINED) ======
 model = XGBClassifier(
-    n_estimators=3000,
-    learning_rate=0.03,
-    max_depth=7,
+    n_estimators=2000,
+    learning_rate=0.05,
+    max_depth=6,
     subsample=0.9,
     colsample_bytree=0.9,
     eval_metric="logloss",
@@ -90,18 +78,18 @@ model = XGBClassifier(
 callbacks = [xgb.callback.EarlyStopping(rounds=50, save_best=True, metric_name="logloss")]
 
 model.fit(
-    X_train, y_train,
-    eval_set=[(X_val, y_val)],
-    #callbacks=callbacks,   # <- déjalo comentado si no quieres ES
+    Xc_train, yc_train,
+    eval_set=[(Xc_valid, yc_valid)],  # VALIDACIÓN = 20% de COMBINED
+    #callbacks=callbacks,
     verbose=False
 )
 
-# ======== 4) VALIDACIÓN ========
-val_proba = model.predict_proba(X_val)[:, 1]
-val_pred = (val_proba >= CHOSEN_THR).astype(int)   # <<<<< UMBRAL APLICADO
-print_metrics(y_val, val_pred, val_proba, title=f"VALIDACIÓN (validation_random_03.csv, umbral={CHOSEN_THR})")
+# ====== Reporte en VALID (20% COMBINED) ======
+yc_pred = model.predict(Xc_valid)
+yc_prob = model.predict_proba(Xc_valid)[:, 1]
+print_metrics(yc_valid, yc_pred, yc_prob, title="VALIDACIÓN (20% COMBINED)")
 
-# ======== 5) TEST ========
-test_proba = model.predict_proba(X_test)[:, 1]
-test_pred = (test_proba >= CHOSEN_THR).astype(int)  # <<<<< UMBRAL APLICADO
-print_metrics(y_test, test_pred, test_proba, title=f"TEST (test_random_03.csv, umbral={CHOSEN_THR})")
+# ====== Reporte en TEST (100% BASE) ======
+yb_pred = model.predict(Xb_test)
+yb_prob = model.predict_proba(Xb_test)[:, 1]
+print_metrics(yb_test, yb_pred, yb_prob, title="TEST (BASE)")
