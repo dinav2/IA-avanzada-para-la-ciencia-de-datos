@@ -58,7 +58,7 @@ Se entrenaron y compararon los siguientes modelos:
  ```bash
   python XGBoostAtemporal.py
 
-  python XGBoostTemporal.py
+  python xgboost_model.py
 
   python lightgbm_model.py
 
