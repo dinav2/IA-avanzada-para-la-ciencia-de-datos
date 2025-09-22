@@ -7,17 +7,17 @@ from sklearn.metrics import (
 from xgboost import XGBClassifier
 import xgboost as xgb
 
-# ======== RUTAS ========
-TRAIN_COMBINED = r"C:\Users\rpzda\Documents\python varios\ML_GDL\IA-avanzada-para-la-ciencia-de-datos\train_balanced_base_months_0_5\train_balanced_combined_months_0_5.csv"  # ENTRENAMIENTO
-VALID_BASE     = r"C:\Users\rpzda\Documents\python varios\ML_GDL\IA-avanzada-para-la-ciencia-de-datos\train_balanced_base_months_0_5\train_balanced_base_months_0_5.csv"      # VALIDACIÓN
-XTEST_COMB     = r"C:\Users\rpzda\Documents\python varios\ML_GDL\IA-avanzada-para-la-ciencia-de-datos\train_balanced_base_months_0_5\X_test_base_months_0_5.csv"               # TEST FEATURES
-YTEST_COMB     = r"C:\Users\rpzda\Documents\python varios\ML_GDL\IA-avanzada-para-la-ciencia-de-datos\train_balanced_base_months_0_5\Y_test_base_months_0_5.csv"               # TEST LABELS
+# ======== RUTAS (ACTUALIZADAS) ========
+# Cambia SOLO la carpeta base si es necesario
+TRAIN_CSV = r"C:\Users\rpzda\Documents\python varios\ML_GDL\train_random_03.csv"        # ENTRENAMIENTO
+VALID_CSV = r"C:\Users\rpzda\Documents\python varios\ML_GDL\validation_random_03.csv"  # VALIDACIÓN
+TEST_CSV  = r"C:\Users\rpzda\Documents\python varios\ML_GDL\test_random_03.csv"        # TEST (con etiqueta)
 
 TARGET_COL = "fraud_bool"
 RSEED = 42
 
 # ======== UMBRAL MANUAL ========
-CHOSEN_THR = 0.2   # <<<<< CAMBIA AQUÍ EL UMBRAL
+CHOSEN_THR = 0.20   # <<<<< CAMBIA AQUÍ EL UMBRAL
 
 def print_metrics(y_true, y_pred, y_proba, title=""):
     if title:
@@ -51,32 +51,35 @@ def print_metrics(y_true, y_pred, y_proba, title=""):
     print(f"PR-AUC:       {average_precision_score(y_true, y_proba):.4f}")
 
 # ======== 1) CARGA ========
-df_train = pd.read_csv(TRAIN_COMBINED)
-df_valid = pd.read_csv(VALID_BASE)
-X_test   = pd.read_csv(XTEST_COMB)
-y_test   = pd.read_csv(YTEST_COMB).squeeze()
+df_train = pd.read_csv(TRAIN_CSV)
+df_valid = pd.read_csv(VALID_CSV)
+df_test  = pd.read_csv(TEST_CSV)
 
 # Validaciones
-assert TARGET_COL in df_train.columns, f"{TARGET_COL} no está en TRAIN_COMBINED"
-assert TARGET_COL in df_valid.columns, f"{TARGET_COL} no está en VALID_BASE"
+assert TARGET_COL in df_train.columns, f"{TARGET_COL} no está en TRAIN_CSV"
+assert TARGET_COL in df_valid.columns, f"{TARGET_COL} no está en VALID_CSV"
+assert TARGET_COL in df_test.columns,  f"{TARGET_COL} no está en TEST_CSV"
 
 # ======== 2) ALINEAR FEATURES ========
 feat_train = [c for c in df_train.columns if c != TARGET_COL]
 feat_valid = [c for c in df_valid.columns if c != TARGET_COL]
-common_feats = sorted(set(feat_train).intersection(set(feat_valid)).intersection(set(X_test.columns)))
+feat_test  = [c for c in df_test.columns  if c != TARGET_COL]
+
+common_feats = sorted(set(feat_train).intersection(set(feat_valid)).intersection(set(feat_test)))
 if not common_feats:
-    raise ValueError("No hay features en común entre TRAIN_COMBINED, VALID_BASE y X_test.")
+    raise ValueError("No hay features en común entre TRAIN, VALID y TEST.")
 
 X_train = df_train[common_feats]
 y_train = df_train[TARGET_COL]
 X_val   = df_valid[common_feats]
 y_val   = df_valid[TARGET_COL]
-X_test  = X_test[common_feats]
+X_test  = df_test[common_feats]
+y_test  = df_test[TARGET_COL]
 
 # ======== 3) MODELO ========
 model = XGBClassifier(
-    n_estimators=2500,
-    learning_rate=0.05,
+    n_estimators=3000,
+    learning_rate=0.03,
     max_depth=7,
     subsample=0.9,
     colsample_bytree=0.9,
@@ -89,16 +92,16 @@ callbacks = [xgb.callback.EarlyStopping(rounds=50, save_best=True, metric_name="
 model.fit(
     X_train, y_train,
     eval_set=[(X_val, y_val)],
-    #callbacks=callbacks,
+    #callbacks=callbacks,   # <- déjalo comentado si no quieres ES
     verbose=False
 )
 
 # ======== 4) VALIDACIÓN ========
 val_proba = model.predict_proba(X_val)[:, 1]
 val_pred = (val_proba >= CHOSEN_THR).astype(int)   # <<<<< UMBRAL APLICADO
-print_metrics(y_val, val_pred, val_proba, title=f"VALIDACIÓN (BASE, umbral={CHOSEN_THR})")
+print_metrics(y_val, val_pred, val_proba, title=f"VALIDACIÓN (validation_random_03.csv, umbral={CHOSEN_THR})")
 
 # ======== 5) TEST ========
 test_proba = model.predict_proba(X_test)[:, 1]
 test_pred = (test_proba >= CHOSEN_THR).astype(int)  # <<<<< UMBRAL APLICADO
-print_metrics(y_test, test_pred, test_proba, title=f"TEST (BASE, umbral={CHOSEN_THR})")
+print_metrics(y_test, test_pred, test_proba, title=f"TEST (test_random_03.csv, umbral={CHOSEN_THR})")
