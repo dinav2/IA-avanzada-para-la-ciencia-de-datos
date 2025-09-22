@@ -62,7 +62,6 @@ class ModelBase:
             return out, cm
         except Exception as e:
             print(f"Error calculating metrics: {e}")
-            # Return default metrics
             return {
                 "f1_macro": 0, "f1_weighted": 0, "roc_auc": 0, "pr_auc": 0,
                 "pos_precision": 0, "pos_recall": 0, "pos_f1": 0,
@@ -82,7 +81,7 @@ class ModelBase:
             metrics, _ = self.metrics_dict(y_true, y_pred, y_proba)
             
             if metrics['fpr'] <= max_fpr:
-                # Prioriza recall para detección de fraude
+                # Prioritize recall for fraud detection
                 score = metrics['pos_recall'] * 0.6 + metrics['pos_f1'] * 0.4
                 if score > best_score:
                     best_score = score
@@ -354,7 +353,6 @@ class ModelBase:
         self.save_artifacts(model_path, feat_train)
         
         wandb.finish()
-        print(f"\n🎊 {self.model_name} EXPERIMENT COMPLETED SUCCESSFULLY! 🎊")
     
     def log_curves_to_wandb(self, y_true, y_proba):
         """Log ROC and PR curves to WandB"""
